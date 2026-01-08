@@ -1,14 +1,25 @@
+import { GoogleGenAI, Type } from "@google/genai";
+import { ModelType, AspectRatio, StoryGenerationResult, VeoModel, VeoAspectRatio, VeoResolution, TitleData } from "../types.ts";
+import { getApiKey } from "../utils/keyStorage.ts";
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { ModelType, AspectRatio, StoryGenerationResult, VeoModel, VeoAspectRatio, VeoResolution, TitleData } from "../types";
-import { getApiKey } from "../utils/keyStorage";
+/**
+ * 안전하게 환경 변수에서 API KEY를 가져오는 헬퍼
+ */
+const getSystemApiKey = (): string | undefined => {
+  try {
+    // window.process.env 안전 참조
+    const env = (window as any).process?.env || {};
+    return env.API_KEY;
+  } catch (e) {
+    return undefined;
+  }
+};
 
 /**
  * Helper to initialize the AI client with the preferred key.
- * Prioritizes the user-managed key from local storage.
  */
 const getAIClient = (customKey?: string) => {
-  const key = customKey || getApiKey() || process.env.API_KEY;
+  const key = customKey || getApiKey() || getSystemApiKey();
   if (!key) {
     throw new Error("API Key is missing. Please configure it in Settings.");
   }
@@ -21,9 +32,10 @@ const getAIClient = (customKey?: string) => {
 export const testConnection = async (key: string): Promise<boolean> => {
   try {
     const ai = new GoogleGenAI({ apiKey: key });
+    // 최소한의 응답 확인을 위해 간단한 프롬프트 사용
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: { parts: [{ text: "ping" }] },
+      model: "gemini-2.5-flash-lite-latest",
+      contents: { parts: [{ text: "hi" }] },
     });
     return !!response.text;
   } catch (error) {
@@ -38,9 +50,9 @@ export const generateStoryStructure = async (
   sceneCount: number = 10
 ): Promise<StoryGenerationResult> => {
   const ai = getAIClient();
-  const modelId = "gemini-2.5-flash";
+  const modelId = "gemini-2.5-flash-lite-latest";
 
-  const sceneSchema: Schema = {
+  const sceneSchema: any = {
     type: Type.OBJECT,
     properties: {
       scenes: {
@@ -124,8 +136,8 @@ export const generateStoryStructure = async (
 
 export const generateTitles = async (topic: string): Promise<TitleData[]> => {
   const ai = getAIClient();
-  const modelId = "gemini-2.5-flash";
-  const titlesSchema: Schema = {
+  const modelId = "gemini-2.5-flash-lite-latest";
+  const titlesSchema: any = {
     type: Type.OBJECT,
     properties: {
       titles: {
@@ -178,7 +190,7 @@ export const generateSceneImage = async (modelType: ModelType, prompt: string, a
 };
 
 export const generateVeoVideo = async (modelId: VeoModel, prompt: string, aspectRatio: VeoAspectRatio, resolution: VeoResolution, referenceImageBase64: string | null): Promise<string> => {
-    const key = getApiKey() || process.env.API_KEY;
+    const key = getApiKey() || getSystemApiKey();
     const ai = getAIClient();
     try {
         const config = { numberOfVideos: 1, resolution, aspectRatio };
