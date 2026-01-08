@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { ResultGrid } from './components/ResultGrid';
 import { HistoryPanel } from './components/HistoryPanel';
 import { ApiKeyModal } from './components/ApiKeyModal';
+import { ImagePreviewModal } from './components/ImagePreviewModal';
 import { ModelType, GeneratedScene, AspectRatio, TitleData, VeoModel, VeoAspectRatio, VeoResolution, HistoryItem } from './types.ts';
 import { generateStoryStructure, generateSceneImage, generateVeoVideo, generateTitles } from './services/geminiService.ts';
 import { hasApiKey } from './utils/keyStorage.ts';
@@ -33,6 +34,9 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [apiKeySet, setApiKeySet] = useState(false);
+  
+  // Global Preview State
+  const [globalPreviewUrl, setGlobalPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setApiKeySet(hasApiKey());
@@ -76,25 +80,18 @@ const App: React.FC = () => {
     setTitles([]);
 
     try {
-      // 1. 스토리 구조 생성
       const result = await generateStoryStructure(topic, referenceImage, sceneCount);
-      
       const initializedScenes: GeneratedScene[] = result.scenes.map(s => ({ ...s, isLoading: true }));
       setScenes(initializedScenes);
       setTitles(result.titles);
-      
-      // 스토리 로딩 종료 (이미지 로딩은 각 씬별로 계속됨)
       setIsGeneratingStory(false);
 
-      // 2. 각 씬별 이미지 병렬 생성
       const scenePromises = result.scenes.map(async (scene, index) => {
         try {
           const imageUrl = await generateSceneImage(selectedModel, scene.imagePrompt, selectedAspectRatio);
           setScenes(prev => {
             const newScenes = [...prev];
-            if (newScenes[index]) {
-              newScenes[index] = { ...newScenes[index], imageUrl, isLoading: false };
-            }
+            if (newScenes[index]) newScenes[index] = { ...newScenes[index], imageUrl, isLoading: false };
             return newScenes;
           });
           
@@ -108,17 +105,13 @@ const App: React.FC = () => {
            console.error(`Scene ${scene.sceneNumber} failed:`, error);
            setScenes(prev => {
             const newScenes = [...prev];
-            if (newScenes[index]) {
-              newScenes[index] = { ...newScenes[index], isLoading: false, error: 'Failed to generate image' };
-            }
+            if (newScenes[index]) newScenes[index] = { ...newScenes[index], isLoading: false, error: 'Failed' };
             return newScenes;
           });
         }
       });
-
       await Promise.allSettled(scenePromises);
     } catch (error: any) {
-      console.error("Storyboard generation failed", error);
       alert(`생성 중 오류 발생: ${error.message}`);
       setScenes([]);
     } finally {
@@ -165,9 +158,7 @@ const App: React.FC = () => {
      if (!ensureApiKey()) return;
      setScenes(prev => {
          const newScenes = [...prev];
-         if (newScenes[index]) {
-             newScenes[index] = { ...newScenes[index], imagePrompt: newPrompt, isLoading: true, error: undefined, imageUrl: undefined };
-         }
+         if (newScenes[index]) newScenes[index] = { ...newScenes[index], imagePrompt: newPrompt, isLoading: true, error: undefined, imageUrl: undefined };
          return newScenes;
      });
      try {
@@ -224,18 +215,26 @@ const App: React.FC = () => {
         onRetryVeo={handleGenerateVeoVideo}
         onRegenerateTitles={handleRegenerateTitles}
         isRegeneratingTitles={isRegeneratingTitles}
+        onI2VPromptClick={(text) => setTopic(text)}
+        onImageClick={setGlobalPreviewUrl}
       />
 
       <HistoryPanel 
         history={history}
         onDelete={(id) => setHistory(h => h.filter(i => i.id !== id))}
         onClear={() => setHistory([])}
+        onPreview={setGlobalPreviewUrl}
       />
       
       <ApiKeyModal 
         isOpen={isApiKeyModalOpen}
         onClose={() => setIsApiKeyModalOpen(false)}
         onKeyStatusChange={setApiKeySet}
+      />
+
+      <ImagePreviewModal 
+        url={globalPreviewUrl}
+        onClose={() => setGlobalPreviewUrl(null)}
       />
     </div>
   );

@@ -14,6 +14,9 @@ interface ResultGridProps {
   // Title Regeneration Props
   onRegenerateTitles?: () => void;
   isRegeneratingTitles?: boolean;
+  // New Handlers
+  onI2VPromptClick?: (text: string) => void;
+  onImageClick?: (url: string) => void;
 }
 
 export const ResultGrid: React.FC<ResultGridProps> = ({ 
@@ -26,7 +29,9 @@ export const ResultGrid: React.FC<ResultGridProps> = ({
   veoError,
   onRetryVeo,
   onRegenerateTitles,
-  isRegeneratingTitles
+  isRegeneratingTitles,
+  onI2VPromptClick,
+  onImageClick
 }) => {
   const [editingScene, setEditingScene] = useState<{ index: number; prompt: string } | null>(null);
 
@@ -127,7 +132,8 @@ export const ResultGrid: React.FC<ResultGridProps> = ({
                             loop 
                             muted
                             playsInline
-                            className="w-full h-full object-contain"
+                            className="w-full h-full object-contain cursor-pointer"
+                            onClick={() => onImageClick && onImageClick(videoUrl)}
                         />
                     ) : null}
                 </div>
@@ -169,7 +175,10 @@ export const ResultGrid: React.FC<ResultGridProps> = ({
                     <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-8">
                         {scenes.map((scene, index) => (
                             <div key={scene.sceneNumber} className="bg-dark-800 rounded-xl overflow-hidden border border-gray-800 hover:border-gray-700 transition-all flex flex-col group">
-                                <div className="aspect-video bg-black relative flex items-center justify-center overflow-hidden">
+                                <div 
+                                    className="aspect-video bg-black relative flex items-center justify-center overflow-hidden cursor-zoom-in"
+                                    onClick={() => scene.imageUrl && onImageClick && onImageClick(scene.imageUrl)}
+                                >
                                     {scene.imageUrl ? (
                                         <>
                                             <img 
@@ -226,10 +235,14 @@ export const ResultGrid: React.FC<ResultGridProps> = ({
                                     <div className="mt-auto pt-4 border-t border-gray-700/50">
                                         <h3 className="text-banana-600 text-xs font-bold uppercase tracking-wider mb-1 flex items-center">
                                             <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                                            I2V Prompt
+                                            I2V Prompt (Click to Use)
                                         </h3>
-                                        <div className="bg-gray-900 p-2 rounded border border-gray-800">
-                                            <code className="text-xs text-green-400 font-mono block break-words">{scene.i2vPrompt}</code>
+                                        <div 
+                                            className="bg-gray-900 p-2 rounded border border-gray-800 cursor-pointer hover:border-banana-500/50 hover:bg-gray-800 transition-all group/prompt"
+                                            onClick={() => onI2VPromptClick && onI2VPromptClick(scene.i2vPrompt)}
+                                            title="Use this prompt in input field"
+                                        >
+                                            <code className="text-xs text-green-400 font-mono block break-words group-hover/prompt:text-banana-400">{scene.i2vPrompt}</code>
                                         </div>
                                     </div>
                                 </div>
@@ -289,7 +302,7 @@ export const ResultGrid: React.FC<ResultGridProps> = ({
 
       {/* Edit & Regenerate Modal */}
       {editingScene && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
               <div className="bg-dark-800 border border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200">
                   <div className="p-6">
                       <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -301,7 +314,6 @@ export const ResultGrid: React.FC<ResultGridProps> = ({
                       
                       <div className="mb-4">
                           <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Adjust Prompt</label>
-                          <div className="text-xs text-gray-500 mb-2 font-mono">Prefix: "A hyper-realistic, documentary-style image." will be maintained.</div>
                           <textarea 
                               value={editingScene.prompt}
                               onChange={(e) => setEditingScene({ ...editingScene, prompt: e.target.value })}
