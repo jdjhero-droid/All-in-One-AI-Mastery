@@ -35,7 +35,6 @@ const App: React.FC = () => {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [apiKeySet, setApiKeySet] = useState(false);
   
-  // Global Preview State
   const [globalPreviewUrl, setGlobalPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -88,7 +87,8 @@ const App: React.FC = () => {
 
       const scenePromises = result.scenes.map(async (scene, index) => {
         try {
-          const imageUrl = await generateSceneImage(selectedModel, scene.imagePrompt, selectedAspectRatio);
+          // 캐릭터 일관성을 위해 referenceImage도 함께 전달
+          const imageUrl = await generateSceneImage(selectedModel, scene.imagePrompt, selectedAspectRatio, referenceImage);
           setScenes(prev => {
             const newScenes = [...prev];
             if (newScenes[index]) newScenes[index] = { ...newScenes[index], imageUrl, isLoading: false };
@@ -162,7 +162,8 @@ const App: React.FC = () => {
          return newScenes;
      });
      try {
-         const imageUrl = await generateSceneImage(selectedModel, newPrompt, selectedAspectRatio);
+         // 개별 재생성 시에도 레퍼런스 이미지 유지
+         const imageUrl = await generateSceneImage(selectedModel, newPrompt, selectedAspectRatio, referenceImage);
          setScenes(prev => {
             const newScenes = [...prev];
             if (newScenes[index]) newScenes[index] = { ...newScenes[index], imageUrl, isLoading: false };

@@ -52,7 +52,6 @@ export const generateStoryStructure = async (
 ): Promise<StoryGenerationResult> => {
   const apiKey = getEffectiveApiKey();
   const ai = new GoogleGenAI({ apiKey });
-  // 복잡한 구조화 작업에는 Pro 모델 사용 및 Thinking Budget 설정 가능
   const modelId = "gemini-3-pro-preview"; 
 
   const sceneSchema: any = {
@@ -88,21 +87,24 @@ export const generateStoryStructure = async (
   };
 
   const systemInstruction = `당신은 세계적으로 명성이 자자한 음악 프로듀서이자 AI 스토리보드 마스터입니다. 
-  사용자의 주제를 바탕으로 빌보드 차트에 오를만한 감각적인 시각 내러티브를 ${sceneCount}개의 장면으로 만듭니다.
-
-  [중요 규칙]
-  1. 레퍼런스 이미지가 제공되면 캐릭터의 얼굴, 의상, 배경 요소를 모든 장면에 걸쳐 정확하게 유지하십시오.
+  
+  [핵심 미션: 캐릭터 일관성 유지]
+  레퍼런스 이미지가 제공된 경우, 이미지 속 인물의 얼굴형, 눈코입의 특징, 헤어스타일, 체형, 의상 스타일을 정밀하게 분석하십시오.
+  각 장면의 'imagePrompt'에는 이 인물의 신체적 특징을 구체적으로 명시하여 모든 장면에서 동일 인물로 보이게 만드십시오.
+  
+  [규칙]
+  1. 레퍼런스 이미지의 인물 정체성(Identity)을 100% 유지하십시오.
   2. 'description'은 한국어로 작성하십시오.
   3. 'imagePrompt'와 'i2vPrompt'는 영어로 상세히 작성하십시오.
   4. 10개의 유튜브 SEO 최적화 제목을 포함하십시오.
-  5. 음악적 감각이 느껴지는 분위기(Mood), 템포(Tempo), 스타일을 반영하십시오.`;
+  5. 장면의 분위기는 시네마틱하고 전문적인 뮤직비디오 스타일이어야 합니다.`;
 
   const parts: any[] = [];
   if (referenceImageBase64) {
     const mimeType = getMimeTypeFromDataUrl(referenceImageBase64);
     const data = referenceImageBase64.split(',')[1];
     parts.push({ inlineData: { mimeType, data } });
-    parts.push({ text: `REFERENCE IMAGE PROVIDED. MAINTAIN CHARACTER CONSISTENCY. Topic: ${topic}` });
+    parts.push({ text: `IMPORTANT: ANALYZE THE REFERENCE IMAGE CAREFULLY. The main subject must look exactly like this in all scenes. Topic: ${topic}` });
   } else {
     parts.push({ text: `Create a professional storyboard about: ${topic}` });
   }
@@ -115,7 +117,7 @@ export const generateStoryStructure = async (
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: sceneSchema,
-        thinkingConfig: { thinkingBudget: 4000 } // 추론 품질 향상
+        thinkingConfig: { thinkingBudget: 4000 }
       },
     });
 
@@ -127,7 +129,7 @@ export const generateStoryStructure = async (
     
     const processedScenes = parsed.scenes.map((scene: any) => ({
       ...scene,
-      imagePrompt: `A hyper-realistic cinematic masterpiece, billboard music video style, ${scene.imagePrompt}`,
+      imagePrompt: `Cinematic billboard style, highly detailed portrait consistency, ${scene.imagePrompt}`,
       i2vPrompt: `${scene.i2vPrompt} There is no slow motion, and the scene unfolds quickly.`
     }));
 
@@ -175,15 +177,30 @@ export const generateTitles = async (topic: string): Promise<TitleData[]> => {
   }
 };
 
-export const generateSceneImage = async (modelType: ModelType, prompt: string, aspectRatio: AspectRatio): Promise<string> => {
+export const generateSceneImage = async (
+  modelType: ModelType, 
+  prompt: string, 
+  aspectRatio: AspectRatio, 
+  referenceImageBase64?: string | null
+): Promise<string> => {
   const apiKey = getEffectiveApiKey();
   const ai = new GoogleGenAI({ apiKey });
   const modelId = modelType === ModelType.NanoBananaPro ? "gemini-3-pro-image-preview" : "gemini-2.5-flash-image";
 
+  const parts: any[] = [];
+  if (referenceImageBase64) {
+    const mimeType = getMimeTypeFromDataUrl(referenceImageBase64);
+    const data = referenceImageBase64.split(',')[1];
+    parts.push({ inlineData: { mimeType, data } });
+    parts.push({ text: `Based on this reference image, generate a new image that EXACTLY matches the identity, facial features, and appearance of the subject: ${prompt}` });
+  } else {
+    parts.push({ text: prompt });
+  }
+
   try {
     const response = await ai.models.generateContent({
       model: modelId,
-      contents: { parts: [{ text: prompt }] },
+      contents: { parts },
       config: { 
         imageConfig: { 
           aspectRatio,
@@ -192,9 +209,9 @@ export const generateSceneImage = async (modelType: ModelType, prompt: string, a
       }
     });
 
-    const parts = response.candidates?.[0]?.content?.parts;
-    if (parts) {
-      for (const part of parts) {
+    const responseParts = response.candidates?.[0]?.content?.parts;
+    if (responseParts) {
+      for (const part of responseParts) {
         if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       }
     }
@@ -211,7 +228,12 @@ export const generateVeoVideo = async (modelId: VeoModel, prompt: string, aspect
   
   try {
     const config: any = { numberOfVideos: 1, resolution, aspectRatio };
-    const params: any = { model: modelId, prompt, config };
+    // Veo에서도 레퍼런스 인물 특징 강조를 위해 프롬프트 보강
+    const enhancedPrompt = referenceImageBase64 
+      ? `Main subject must look identical to the attached reference image. ${prompt}`
+      : prompt;
+
+    const params: any = { model: modelId, prompt: enhancedPrompt, config };
 
     if (referenceImageBase64) {
       params.image = { 
