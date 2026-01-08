@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wild Teacher All-in-One AI Mastery</title>
     <script>
-      // 브라우저 환경에서 process.env 참조 에러 방지를 위한 최상단 선언
-      window.process = { env: { NODE_ENV: 'production' } };
+      // 브라우저 환경에서 process.env 참조 에러 방지
+      window.process = window.process || {};
+      window.process.env = window.process.env || { NODE_ENV: 'production' };
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -46,7 +47,6 @@
       ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #444; }
       #root { height: 100vh; width: 100vw; }
-      /* 에러 발생 시 표시할 스타일 */
       .error-fallback {
         padding: 2rem;
         color: #ff4d4d;

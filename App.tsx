@@ -3,28 +3,26 @@ import { Sidebar } from './components/Sidebar';
 import { ResultGrid } from './components/ResultGrid';
 import { HistoryPanel } from './components/HistoryPanel';
 import { ApiKeyModal } from './components/ApiKeyModal';
-import { ModelType, GeneratedScene, AspectRatio, TitleData, VeoModel, VeoAspectRatio, VeoResolution, HistoryItem } from './types';
-import { generateStoryStructure, generateSceneImage, generateVeoVideo, generateTitles } from './services/geminiService';
-import { hasApiKey } from './utils/keyStorage';
+import { ModelType, GeneratedScene, AspectRatio, TitleData, VeoModel, VeoAspectRatio, VeoResolution, HistoryItem } from './types.ts';
+import { generateStoryStructure, generateSceneImage, generateVeoVideo, generateTitles } from './services/geminiService.ts';
+import { hasApiKey } from './utils/keyStorage.ts';
 
 const HISTORY_STORAGE_KEY = 'wt_generation_history_v1';
 
 const App: React.FC = () => {
-  // Common State
   const [topic, setTopic] = useState('');
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
 
-  // Storyboard State
   const [selectedModel, setSelectedModel] = useState<ModelType>(ModelType.NanoBanana);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>('16:9');
   const [sceneCount, setSceneCount] = useState<number>(10);
   const [scenes, setScenes] = useState<GeneratedScene[]>([]);
   const [titles, setTitles] = useState<TitleData[]>([]);
+  
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [isRegeneratingTitles, setIsRegeneratingTitles] = useState(false);
 
-  // Veo State
   const [veoModel, setVeoModel] = useState<VeoModel>('veo-3.1-fast-generate-preview');
   const [veoAspectRatio, setVeoAspectRatio] = useState<VeoAspectRatio>('16:9');
   const [veoResolution, setVeoResolution] = useState<VeoResolution>('720p');
@@ -32,23 +30,15 @@ const App: React.FC = () => {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [veoError, setVeoError] = useState<string | null>(null);
 
-  // History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
-
-  // UI State
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [apiKeySet, setApiKeySet] = useState(false);
 
   useEffect(() => {
     setApiKeySet(hasApiKey());
-    // Load history
     const storedHistory = localStorage.getItem(HISTORY_STORAGE_KEY);
     if (storedHistory) {
-      try {
-        setHistory(JSON.parse(storedHistory));
-      } catch (e) {
-        console.error("Failed to load history", e);
-      }
+      try { setHistory(JSON.parse(storedHistory)); } catch (e) { console.error(e); }
     }
   }, []);
 
@@ -57,7 +47,7 @@ const App: React.FC = () => {
   }, [history]);
 
   const ensureApiKey = (): boolean => {
-    if (!hasApiKey()) {
+    if (!hasApiKey() && !(window as any).process?.env?.API_KEY) {
       setIsApiKeyModalOpen(true);
       return false;
     }
@@ -70,12 +60,15 @@ const App: React.FC = () => {
       id: Math.random().toString(36).substr(2, 9),
       timestamp: Date.now()
     };
-    setHistory(prev => [newItem, ...prev].slice(0, 50)); // Keep last 50 items
+    setHistory(prev => [newItem, ...prev].slice(0, 50));
   };
 
   const handleGenerateStoryboard = async () => {
     if (!ensureApiKey()) return;
-    if (!topic) return;
+    if (!topic.trim()) {
+      alert("주제(Topic)를 입력해주세요.");
+      return;
+    }
 
     setIsGenerating(true);
     setIsGeneratingStory(true);
@@ -83,44 +76,50 @@ const App: React.FC = () => {
     setTitles([]);
 
     try {
+      // 1. 스토리 구조 생성
       const result = await generateStoryStructure(topic, referenceImage, sceneCount);
+      
       const initializedScenes: GeneratedScene[] = result.scenes.map(s => ({ ...s, isLoading: true }));
-
       setScenes(initializedScenes);
       setTitles(result.titles);
+      
+      // 스토리 로딩 종료 (이미지 로딩은 각 씬별로 계속됨)
       setIsGeneratingStory(false);
 
-      const scenePromises = initializedScenes.map(async (scene, index) => {
+      // 2. 각 씬별 이미지 병렬 생성
+      const scenePromises = result.scenes.map(async (scene, index) => {
         try {
           const imageUrl = await generateSceneImage(selectedModel, scene.imagePrompt, selectedAspectRatio);
           setScenes(prev => {
             const newScenes = [...prev];
-            if (newScenes[index]) newScenes[index] = { ...newScenes[index], imageUrl, isLoading: false };
+            if (newScenes[index]) {
+              newScenes[index] = { ...newScenes[index], imageUrl, isLoading: false };
+            }
             return newScenes;
           });
           
-          // Add to History
           addToHistory({
             type: 'image',
             url: imageUrl,
-            label: `Scene ${scene.sceneNumber}: ${topic.substring(0, 30)}...`,
+            label: `Scene ${scene.sceneNumber}: ${topic.substring(0, 20)}...`,
             aspectRatio: selectedAspectRatio
           });
-
         } catch (error) {
            console.error(`Scene ${scene.sceneNumber} failed:`, error);
            setScenes(prev => {
             const newScenes = [...prev];
             if (newScenes[index]) {
-                newScenes[index] = { ...newScenes[index], isLoading: false, error: 'Failed' };
+              newScenes[index] = { ...newScenes[index], isLoading: false, error: 'Failed to generate image' };
             }
             return newScenes;
           });
         }
       });
+
       await Promise.allSettled(scenePromises);
-    } catch (error) {
-      console.error("Workflow failed", error);
+    } catch (error: any) {
+      console.error("Storyboard generation failed", error);
+      alert(`생성 중 오류 발생: ${error.message}`);
       setScenes([]);
     } finally {
       setIsGenerating(false);
@@ -129,42 +128,34 @@ const App: React.FC = () => {
   };
 
   const handleRegenerateTitles = async () => {
-    if (!ensureApiKey()) return;
-    if (!topic) return;
+    if (!ensureApiKey() || !topic) return;
     setIsRegeneratingTitles(true);
     try {
         const newTitles = await generateTitles(topic);
         setTitles(newTitles);
     } catch (error) {
-        console.error("Failed to regenerate titles", error);
+        console.error(error);
     } finally {
         setIsRegeneratingTitles(false);
     }
   };
 
   const handleGenerateVeoVideo = async () => {
-    if (!ensureApiKey()) return;
-    if (!topic) return;
-
+    if (!ensureApiKey() || !topic) return;
     setIsGeneratingVideo(true);
     setGeneratedVideoUrl(null);
     setVeoError(null);
-
     try {
         const videoUrl = await generateVeoVideo(veoModel, topic, veoAspectRatio, veoResolution, referenceImage);
         setGeneratedVideoUrl(videoUrl);
-        
-        // Add to History
         addToHistory({
           type: 'video',
           url: videoUrl,
-          label: `Veo Video: ${topic.substring(0, 30)}...`,
+          label: `Video: ${topic.substring(0, 20)}...`,
           aspectRatio: veoAspectRatio
         });
-
     } catch (error: any) {
-        console.error("Veo failed", error);
-        setVeoError(error.message || "Failed to generate video.");
+        setVeoError(error.message || "Video generation failed.");
     } finally {
         setIsGeneratingVideo(false);
     }
@@ -186,15 +177,6 @@ const App: React.FC = () => {
             if (newScenes[index]) newScenes[index] = { ...newScenes[index], imageUrl, isLoading: false };
             return newScenes;
          });
-         
-         // Add to History
-         addToHistory({
-            type: 'image',
-            url: imageUrl,
-            label: `Regen Scene ${index + 1}: ${topic.substring(0, 20)}...`,
-            aspectRatio: selectedAspectRatio
-          });
-
      } catch (error) {
          setScenes(prev => {
             const newScenes = [...prev];
@@ -202,16 +184,6 @@ const App: React.FC = () => {
             return newScenes;
          });
      }
-  };
-
-  const handleDeleteHistoryItem = (id: string) => {
-    setHistory(prev => prev.filter(item => item.id !== id));
-  };
-
-  const handleClearHistory = () => {
-    if (window.confirm("Are you sure you want to clear all history?")) {
-      setHistory([]);
-    }
   };
 
   return (
@@ -256,8 +228,8 @@ const App: React.FC = () => {
 
       <HistoryPanel 
         history={history}
-        onDelete={handleDeleteHistoryItem}
-        onClear={handleClearHistory}
+        onDelete={(id) => setHistory(h => h.filter(i => i.id !== id))}
+        onClear={() => setHistory([])}
       />
       
       <ApiKeyModal 
